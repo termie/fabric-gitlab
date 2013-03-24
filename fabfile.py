@@ -43,7 +43,7 @@ def ruby(force = False):
         )
 
         fabtools.require.file(
-            url     = 'http://ftp.ruby-lang.org/pub/ruby/1.9/ruby-1.9.3-p327.tar.gz',
+            source  = 'files/ruby/ruby-1.9.3-p327.tar.gz',
             path    = '/tmp/ruby/ruby-1.9.3-p327.tar.gz'
         )
 
