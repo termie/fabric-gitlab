@@ -94,8 +94,12 @@ def database():
         'libpq-dev'
     ])
 
-    # execute psql statements
+    fabtools.require.files.file(
+        source  = 'files/postgres/commands',
+        path    = '/tmp/commands')
 
+    # execute psql statements
+    sudo('psql -d template1 gitlab -f commands', user='postgres')
 
     fabtools.require.files.file(
         source  = 'files/postgres/pg_hba.conf',
