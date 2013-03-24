@@ -29,6 +29,7 @@ def depends():
         'libcurl4-openssl-dev',
         'libicu-dev',
         'libtool',
+        'nginx'
     ])
 
 
@@ -190,6 +191,20 @@ def check_status():
     with cd('/home/git/gitlab'):
         sudo('bundle exec rake gitlab:check RAILS_ENV=production', user='git')
 
+
+@task
+def site_configuration():
+    fabtools.require.file(
+        source   = 'files/nginx/gitlab',
+        path     = '/etc/nginx/sites-available/gitlab',
+        owner    = 'root',
+        group    = 'root',
+        mode     = '755',
+        use_sudo = True
+    )
+    sudo('rm -f /etc/nginx/sites-enabled/gitlab')
+    sudo('ln -s /etc/nginx/sites-available/gitlab /etc/nginx/sites-enabled/gitlab')
+
 @task(default = True)
 def gitlab():
     execute(depends)
@@ -198,4 +213,6 @@ def gitlab():
     execute(gitlab_shell)
     execute(database)
     execute(configure)
+    execute(install_gems)
+    execute(init_script)
 
