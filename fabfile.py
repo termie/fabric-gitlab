@@ -181,6 +181,10 @@ def init_script():
 
 
 @task
+def start_gitlab():
+    sudo('service gitlab start')
+
+@task
 def check_info():
     with cd('/home/git/gitlab'):
         sudo('bundle exec rake gitlab:env:info RAILS_ENV=production', user='git')
@@ -204,6 +208,7 @@ def site_configuration():
     )
     sudo('rm -f /etc/nginx/sites-enabled/gitlab')
     sudo('ln -s /etc/nginx/sites-available/gitlab /etc/nginx/sites-enabled/gitlab')
+    sudo('service nginx restart')
 
 @task(default = True)
 def gitlab():
@@ -215,4 +220,4 @@ def gitlab():
     execute(configure)
     execute(install_gems)
     execute(init_script)
-
+    execute(site_configuration)
