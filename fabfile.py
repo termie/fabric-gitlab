@@ -1,3 +1,4 @@
+import fabtools.deb
 import fabtools.require
 import fabtools.files
 import fabtools.user
@@ -9,6 +10,7 @@ env.hosts = ['vagrant@192.168.33.10']
 
 @task
 def depends():
+    fabtools.deb.update_index(quiet=False)
     fabtools.require.deb.packages([
         'build-essential',
         'zlib1g-dev',
