@@ -90,6 +90,15 @@ def gitlab_shell():
 
 
 @task
+def clone_source():
+    if not fabtools.files.is_dir('/home/git/gitlab'):
+        with cd('/home/git'):
+            sudo('git clone https://github.com/gitlabhq/gitlabhq.git gitlab', user='git')
+    with cd('/home/git/gitlab'):
+        sudo('git checkout 5-0-stable', user='git')
+
+
+@task
 def database():
     fabtools.require.deb.packages([
         'postgresql-9.1',
@@ -101,7 +110,7 @@ def database():
         path    = '/tmp/commands')
 
     # execute psql statements
-    sudo('psql -d template1 gitlab -f commands', user='postgres')
+    sudo('psql -d template1 -f /tmp/commands', user='postgres')
 
     fabtools.require.files.file(
         source  = 'files/postgres/pg_hba.conf',
@@ -111,8 +120,8 @@ def database():
         mode    = '644',
         use_sudo = True)
     fabtools.require.files.file(
-        source  = 'files/postgres/postgres.conf',
-        path    = '/etc/postgresql/9.1/main/postgres.conf',
+        source  = 'files/postgres/postgresql.conf',
+        path    = '/etc/postgresql/9.1/main/postgresql.conf',
         owner   = 'postgres',
         group   = 'postgres',
         mode    = '644',
@@ -121,19 +130,11 @@ def database():
     fabtools.require.files.file(
         source  = 'files/gitlab/database.yml',
         path    = '/home/git/gitlab/config/database.yml',
-        owner   = 'postgres',
-        group   = 'postgres',
+        owner   = 'git',
+        group   = 'git',
         mode    = '644',
         use_sudo = True)
 
-
-
-@task
-def clone_source():
-    with cd('/home/git'):
-        sudo('git clone https://github.com/gitlabhq/gitlabhq.git gitlab', user='git')
-    with cd('/home/git/gitlab'):
-        sudo('git checkout 5-0-stable', user='git')
 
 
 @task
@@ -172,6 +173,11 @@ def install_gems():
     with cd('/home/git/gitlab'):
         sudo("gem install -V charlock_holmes --version '0.6.9'")
         sudo('bundle install --deployment --without development test mysql', user='git')
+
+@task
+def init_database():
+    with cd('/home/git/gitlab'):
+        sudo('bundle exec rake gitlab:setup RAILS_ENV=production', user='git')
 
 @task
 def init_script():
@@ -214,6 +220,7 @@ def site_configuration():
     )
     sudo('rm -f /etc/nginx/sites-enabled/gitlab')
     sudo('ln -s /etc/nginx/sites-available/gitlab /etc/nginx/sites-enabled/gitlab')
+    sudo('service gitlab start')
     sudo('service nginx restart')
 
 @task(default = True)
@@ -221,9 +228,12 @@ def gitlab():
     execute(depends)
     execute(ruby)
     execute(bundler)
+    execute(git_user)
     execute(gitlab_shell)
+    execute(clone_source)
     execute(database)
     execute(configure)
     execute(install_gems)
+    execute(init_database)
     execute(init_script)
     execute(site_configuration)
