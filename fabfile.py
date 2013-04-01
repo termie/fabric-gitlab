@@ -5,7 +5,10 @@ import fabtools.user
 from fabric.api import *
 from fabric.context_managers import *
 
+
 env.hosts = ['vagrant@192.168.33.10']
+result = local('vagrant ssh-config | grep IdentityFile', capture=True)
+env.key_filename = result.split()[1]
 
 
 @task
@@ -66,8 +69,13 @@ def git_user():
     # do this manually, rather than via fabtools
     if not fabtools.user.exists('git'):
         sudo("adduser --disabled-login --gecos 'GitLab' git")
-    sudo('git config --global user.name  "GitLab"')
-    sudo('git config --global user.email "gitlab@localhost"')
+    fabtools.require.files.file(
+        source  = 'files/git/gitconfig',
+        path    = '/home/git/.gitconfig',
+        owner   = 'git',
+        group   = 'git',
+        mode    = '644',
+        use_sudo = True)
 
 @task
 def gitlab_shell():
@@ -209,6 +217,11 @@ def check_status():
 
 
 @task
+def sidekiq():
+    with cd('/home/git/gitlab'):
+        sudo('bundle exec rake sidekiq:start RAILS_ENV=production', user='git')
+
+@task
 def site_configuration():
     fabtools.require.file(
         source   = 'files/nginx/gitlab',
@@ -236,4 +249,5 @@ def gitlab():
     execute(install_gems)
     execute(init_database)
     execute(init_script)
+    execute(sidekiq)
     execute(site_configuration)
