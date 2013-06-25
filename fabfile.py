@@ -1,9 +1,12 @@
+# vim: tabstop=4 shiftwidth=4 softtabstop=4
+
 import fabtools.deb
 import fabtools.require
 import fabtools.files
 import fabtools.user
 
 from fabric.api import env
+from fabric.api import execute
 from fabric.api import local
 from fabric.api import run
 from fabric.api import sudo
@@ -32,19 +35,23 @@ def depends():
         'git-core',
         'openssh-server',
         'redis-server',
-        'postfix',
         'checkinstall',
         'libxml2-dev',
         'libxslt-dev',
         'libcurl4-openssl-dev',
         'libicu-dev',
-        'libtool',
+        # required for mail notifications
+        'postfix',
+        # obvs
+        'git',
+        #'libtool',
+        # preferred server
         'nginx'
     ])
 
 
 @task
-def ruby(force = False):
+def ruby(force=False):
     s = run('ruby --version')
     if force or not s.startswith('ruby 1.9.3p327'):
         sudo('rm -rf /tmp/ruby')
@@ -75,25 +82,17 @@ def git_user():
     if not fabtools.user.exists('git'):
         sudo("adduser --disabled-login --gecos 'GitLab' git")
 
-    fabtools.require.files.file(
-        source   = 'files/git/gitconfig',
-        path     = '/home/git/.gitconfig',
-        owner    = 'git',
-        group    = 'git',
-        mode     = '644',
-        use_sudo = True)
 
 
 @task
 def gitlab_shell():
-    fabtools.require.deb.packages([
-        'git'
-    ])
-
     if not fabtools.files.is_dir('/home/git/gitlab-shell'):
         with cd('/home/git'):
             sudo('git clone https://github.com/gitlabhq/gitlab-shell.git',
                  user='git')
+        with cd('/home/git/gitlab-shell'):
+            sudo('git checkout v1.4.0', user='git')
+
     fabtools.require.files.file(
         source   = 'files/gitlab-shell/config.yml',
         path     = '/home/git/gitlab-shell/config.yml',
@@ -101,22 +100,13 @@ def gitlab_shell():
         group    = 'git',
         mode     = '644',
         use_sudo = True)
+
     with cd('/home/git/gitlab-shell'):
         sudo('./bin/install', user='git')
 
 
 @task
-def clone_source():
-    if not fabtools.files.is_dir('/home/git/gitlab'):
-        with cd('/home/git'):
-            sudo('git clone https://github.com/gitlabhq/gitlabhq.git gitlab',
-                 user='git')
-    with cd('/home/git/gitlab'):
-        sudo('git checkout 5-2-stable', user='git')
-
-
-@task
-def database():
+def database_postgres():
     fabtools.require.deb.packages([
         'postgresql-9.1',
         'libpq-dev'
@@ -125,9 +115,6 @@ def database():
     fabtools.require.files.file(
         source  = 'files/postgres/commands',
         path    = '/tmp/commands')
-
-    # execute psql statements
-    sudo('psql -d template1 -f /tmp/commands', user='postgres')
 
     fabtools.require.files.file(
         source   = 'files/postgres/pg_hba.conf',
@@ -144,13 +131,22 @@ def database():
         mode     = '644',
         use_sudo = True)
     sudo('service postgresql restart')
-    fabtools.require.files.file(
-        source   = 'files/gitlab/database.yml',
-        path     = '/home/git/gitlab/config/database.yml',
-        owner    = 'git',
-        group    = 'git',
-        mode     = '644',
-        use_sudo = True)
+
+
+    # execute psql statements
+    sudo('psql -d template1 -f /tmp/commands', user='postgres')
+
+
+
+@task
+def clone_source():
+    if not fabtools.files.is_dir('/home/git/gitlab'):
+        with cd('/home/git'):
+            sudo('git clone https://github.com/gitlabhq/gitlabhq.git gitlab',
+                 user='git')
+
+    with cd('/home/git/gitlab'):
+        sudo('git checkout 5-3-stable', user='git')
 
 
 @task
@@ -163,17 +159,20 @@ def configure():
             group    = 'git',
             mode     = '644',
             use_sudo = True)
+
         sudo('chown -R git log/')
         sudo('chown -R git tmp/')
         sudo('chmod -R u+rwX  log/')
         sudo('chmod -R u+rwX  tmp/')
-        sudo('cp config/unicorn.rb.example config/unicorn.rb', user = 'git')
+        sudo('cp config/puma.rb.example config/puma.rb', user='git')
+
     fabtools.require.directory(
         path     = '/home/git/gitlab-satellites',
         owner    = 'git',
         group    = 'git',
         mode     = '755',
         use_sudo = True)
+
     fabtools.require.directory(
         path     = '/home/git/gitlab/tmp/pids',
         owner    = 'git',
@@ -181,11 +180,48 @@ def configure():
         mode     = '755',
         use_sudo = True)
 
+    fabtools.require.directory(
+        path     = '/home/git/gitlab/tmp/sockets',
+        owner    = 'git',
+        group    = 'git',
+        mode     = '755',
+        use_sudo = True)
+
+    fabtools.require.directory(
+        path     = '/home/git/gitlab/public/uploads',
+        owner    = 'git',
+        group    = 'git',
+        mode     = '755',
+        use_sudo = True)
+
+    # this makes sense to be in the git_user area, but the install docs
+    # have it here, keeping it here to prevent confusion
+    fabtools.require.files.file(
+        source   = 'files/git/gitconfig',
+        path     = '/home/git/.gitconfig',
+        owner    = 'git',
+        group    = 'git',
+        mode     = '644',
+        use_sudo = True)
+
 
 @task
-def install_gems():
+def configure_gitlab_db_postgres():
+    # this makes sense to be in the database_postgres area, but the install
+    # docs have it here, keeping it here to prevent confusion
+    fabtools.require.files.file(
+        source   = 'files/gitlab/database.yml',
+        path     = '/home/git/gitlab/config/database.yml',
+        owner    = 'git',
+        group    = 'git',
+        mode     = '644',
+        use_sudo = True)
+
+
+@task
+def install_gems_postgres():
     with cd('/home/git/gitlab'):
-        sudo("gem install -V charlock_holmes --version '0.6.9'")
+        sudo("gem install -V charlock_holmes --version '0.6.9.4'")
         sudo('bundle install --deployment --without development test mysql',
              user='git')
 
@@ -193,24 +229,27 @@ def install_gems():
 @task
 def init_database():
     with cd('/home/git/gitlab'):
-        sudo('bundle exec rake gitlab:setup RAILS_ENV=production', user='git')
+        sudo('force=yes bundle exec rake gitlab:setup RAILS_ENV=production',
+             user='git')
 
 
 @task
 def init_script():
-    fabtools.require.file(
-        url      = 'https://raw.github.com/gitlabhq/gitlab-recipes/5-0-stable/init.d/gitlab',
-        path     = '/etc/init.d/gitlab',
-        owner    = 'root',
-        group    = 'root',
-        mode     = '755',
-        use_sudo = True)
+    with cd('/home/git/gitlab'):
+        sudo('cp lib/support/init.d/gitlab /etc/init.d/gitlab')
+
+    sudo('chmod +x /etc/init.d/gitlab')
     sudo('update-rc.d gitlab defaults 21')
 
 
 @task
 def start_gitlab():
     sudo('service gitlab start')
+
+
+@task
+def stop_gitlab():
+    sudo('service gitlab stop')
 
 
 @task
@@ -246,7 +285,6 @@ def site_configuration():
     sudo('rm -f /etc/nginx/sites-enabled/gitlab')
     sudo('ln -s /etc/nginx/sites-available/gitlab'
          ' /etc/nginx/sites-enabled/gitlab')
-    sudo('service gitlab start')
     sudo('service nginx restart')
 
 
@@ -257,11 +295,13 @@ def gitlab():
     execute(bundler)
     execute(git_user)
     execute(gitlab_shell)
+    execute(database_postgres)
     execute(clone_source)
-    execute(database)
     execute(configure)
-    execute(install_gems)
+    execute(configure_gitlab_db_postgres)
+    execute(install_gems_postgres)
     execute(init_database)
     execute(init_script)
-    execute(sidekiq)
+    execute(start_gitlab)
+    #execute(sidekiq)
     execute(site_configuration)

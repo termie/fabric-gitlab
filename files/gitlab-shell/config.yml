@@ -2,7 +2,7 @@
 user: git
 
 # Url to gitlab instance. Used for api calls
-gitlab_url: "http://localhost/"
+gitlab_url: "http://localhost"
 
 # Repositories path
 repos_path: "/home/git/repositories"
